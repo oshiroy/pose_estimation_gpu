@@ -1,0 +1,8 @@
+*.pyc
+.DS_Store
+.\~
+*.egg-info
+*.so
+
+# build dir
+build
