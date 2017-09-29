@@ -189,8 +189,9 @@ void PoseEstimator::render(VectorXd t, MatrixXd R)
   // render depth
   mesh_vector[obj_id]->render();
 
-  // glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
   /* for debug */
+  // glBindFramebuffer(GL_FRAMEBUFFER, 0);
   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   // mesh_vector[obj_id]->render();
   // glfwSwapBuffers(window);

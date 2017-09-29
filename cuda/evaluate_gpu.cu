@@ -97,7 +97,7 @@ void accumulate_obj_score(int* mask_cnt_arr, int* nonzero_cnt_arr, float* ret){
   __syncthreads();
 
   if(threadIdx.x == 0){
-    if(sum_mask != 0){
+    if(sum_mask != 0 && sum_nonzero / (float)sum_mask > 0.3){
       *ret = 1.0 / (1.0 + sum_nonzero / (float)sum_mask);
     }
     else{
@@ -117,40 +117,73 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
     int offset = x + y * imw;
     float4 sample =  tex2D(texRef, x, imh - y); // for convert coords gl -> cv
 
-    __shared__ int nonzero_cnt, old, idx, i_iter;
+    __shared__ int nonzero_cnt, idx, i_iter;
+
     if(threadIdx.x == 0){
       nonzero_cnt = 0;
       i_iter = 0;
     }
     ret[offset] = 0; // initalization
     __syncthreads();
+
+    int old;
     if (sample.x != 0 && depth[offset] != 0 && mask[offset] != 0){
       old = atomicAdd(&nonzero_cnt, 1);
-      ret[old + y * imw] = sample.x - depth[offset];
+      ret[old + y * imw] = fabsf(sample.x - depth[offset]);
     }
     __syncthreads();
 
-    // absolute selection sort per block
-    __shared__ float min_val;
+    // selection sort per block
     if(threadIdx.x == 0){
       count_arr[y] = nonzero_cnt;
     }
+    __syncthreads();
 
+    // if(threadIdx.x == 0){
+    //   for (int i = 0 ; i <= nonzero_cnt ; ++i){
+    //     float min_val = ret[i + y * imw];
+    //     int min_idx = i;
+    //     // Find the smallest value in the range.
+    //     for (int j = i+1 ; j <= nonzero_cnt ; ++j){
+    //       float val_j = ret[j + y * imw];
+    //       if (val_j < min_val){
+    //         min_idx = j;
+    //         min_val = val_j;
+    //       }
+    //     }
+    //     // Swap the values.
+    //     if (i != min_idx){
+    //       ret[min_idx] = ret[i + y * imw];
+    //       ret[i + y * imw] = min_val;
+    //     }
+    //   }
+    // }
+
+    __shared__ int min_idx;
+    __shared__ float min_val;
     while(i_iter < nonzero_cnt){
       if(threadIdx.x == 0){
         idx = i_iter + y * imw;
-        min_val = fabsf(ret[idx]);
+        min_val = ret[idx];
+        min_idx = (nonzero_cnt - 1) + y * imw ;
       }
       __syncthreads();
-      if(x > i_iter  && x < nonzero_cnt){
-        atomicMin(&min_val, fabsf(ret[offset]));
+      if(x > i_iter && x < nonzero_cnt){
+        atomicMin(&min_val, ret[offset]);
       }
       __syncthreads();
-      if(min_val == fabsf(ret[offset])){
-        ret[offset] = ret[idx];
-        ret[idx] = min_val;
+      if(x >= i_iter  && x < nonzero_cnt && min_val == ret[offset]){
+        atomicMin(&min_idx, offset);
       }
-      if(threadIdx.x == 0) ++i_iter;
+      __syncthreads();
+
+      if(threadIdx.x == 0){
+        if(min_idx != idx){
+          ret[min_idx] = ret[idx];
+          ret[idx] = min_val;
+        }
+        ++i_iter;
+      }
       __syncthreads();
     }
 }
@@ -165,7 +198,7 @@ void calc_sorted_invisib_map(const float* __restrict__ depth, const float* __res
     int offset = x + y * imw;
     float4 sample =  tex2D(texRef, x, imh - y); // for convert coords gl -> cv
     __shared__ float min_val;
-    __shared__ int nonzero_cnt, idx, old, i_iter;
+    __shared__ int nonzero_cnt, idx, old, i_iter, min_idx;
     if(threadIdx.x == 0){
       nonzero_cnt = 0;
       i_iter = 0;
@@ -178,29 +211,39 @@ void calc_sorted_invisib_map(const float* __restrict__ depth, const float* __res
       if(ret[old + y * imw] > 0.020){
         ret[old + y * imw] = 0;
       }
+      ret[old + y * imw] = fabsf(ret[old + y * imw]);
     }
     __syncthreads();
 
-    // absolute selection sort per block
+    // selection sort per block
     if(threadIdx.x == 0){
       count_arr[y] = nonzero_cnt;
     }
+    __syncthreads();
 
     while(i_iter < nonzero_cnt){
       if(threadIdx.x == 0){
         idx = i_iter + y * imw;
-        min_val = fabsf(ret[idx]);
+        min_val = ret[idx];
+        min_idx = (nonzero_cnt - 1) + y * imw ;
       }
       __syncthreads();
       if(x > i_iter  && x < nonzero_cnt){
-        atomicMin(&min_val, fabsf(ret[offset]));
+        atomicMin(&min_val, ret[offset]);
       }
       __syncthreads();
-      if(min_val == fabsf(ret[offset])){
-        ret[offset] = fabsf(ret[idx]);
-        ret[idx] = min_val;
+      if(x >= i_iter  && x < nonzero_cnt && min_val == ret[offset]){
+        atomicMin(&min_idx, offset);
       }
-      if(threadIdx.x == 0) ++i_iter;
+      __syncthreads();
+
+      if(threadIdx.x == 0){
+        if(min_idx != idx){
+          ret[min_idx] = ret[idx];
+          ret[idx] = min_val;
+        }
+        ++i_iter;
+      }
       __syncthreads();
     }
 }
@@ -222,7 +265,7 @@ void percentile_remove(float* ret, int* count_arr, int* out_pthre, int imw, int 
   }
   __syncthreads();
   if(threadIdx.x == 0){
-    pthre = cnt * 0.95;
+    pthre = cnt * 0.90;
     i_iter = 0;
     *out_pthre = pthre;
   }
@@ -490,10 +533,10 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
 
   calc_sorted_visib_map<<<im_h, im_w, 0, s1>>>(depth_d, mask_d, score_arr,
                                                height_arr, im_w, im_h);
-  percentile_remove<<<1, im_h, sizeof(int)*im_h, s1>>>(score_arr, height_arr,
-                                                       v_pthre, im_w, im_h);
-  thre_row_sum<<<im_h, im_w, 0, s1>>>(score_arr, sum_arr, height_arr, 0.10, im_w);
-  calc_final<<<1, im_h, 0, s1>>>(sum_arr, score_d, v_pthre);
+  // percentile_remove<<<1, im_h, sizeof(int)*im_h, s1>>>(score_arr, height_arr,
+  //                                                      v_pthre, im_w, im_h);
+  // thre_row_sum<<<im_h, im_w, 0, s1>>>(score_arr, sum_arr, height_arr, 0.10, im_w);
+  // calc_final<<<1, im_h, 0, s1>>>(sum_arr, score_d, v_pthre);
 
   cudaMemcpyAsync(&host_arr[0], &sum_arr[0], sizeof(float), cudaMemcpyDeviceToHost, s1);
 
@@ -512,6 +555,7 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   cudaMemcpyAsync(&obj_score_h, obj_score, sizeof(float), cudaMemcpyDeviceToHost, s3);
 
   // cudaMemcpy(host_arr, score_arr, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
+  // cudaMemcpy(host_arr, invisib_progress, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
   // for(int i = 0; i < im_h; i++){
   // for(int i = 0; i < 3; i++){
   //   for(int j = 0; j < im_w; j++){
@@ -525,7 +569,6 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   //       printf("%f, ", host_arr[i * im_w + j]);
   //       // printf("(%d, %d)", i ,j);
   //     }
-
   //   }
   //   printf("\n");
   // }
@@ -553,8 +596,9 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   cudaStreamSynchronize(s2);
   cudaStreamSynchronize(s3);
 
-  *score = host_arr[0] * obj_score_h;
-  // *score = host_arr[1];
+  // *score = host_arr[0] * obj_score_h;
+  *score = host_arr[0] + host_arr[1] + 0.001 * obj_score_h;
+  // printf("visib_score : %f, invisib_score : %f, obj_score : %f\n", host_arr[0], host_arr[1], obj_score_h);
   // printf("obj_score : %f\n", obj_score_h);
 }
 
