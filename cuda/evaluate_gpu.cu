@@ -16,16 +16,6 @@ using namespace std;
 texture<float4, cudaTextureType2D, cudaReadModeElementType> texRef;
 cudaArray *cuarr;
 
-struct is_more_than_thre
-{
-  float thre;
-  __host__ __device__
-  bool operator()(float x)
-  {
-    return x > thre;
-  }
-};
-
 
 __device__ static float atomicMax(float* address, float val)
 {
@@ -38,7 +28,6 @@ __device__ static float atomicMax(float* address, float val)
   } while (assumed != old);
   return __int_as_float(old);
 }
-
 
 
 __device__ static float atomicMin(float* address, float val)
@@ -139,26 +128,6 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
     }
     __syncthreads();
 
-    // if(threadIdx.x == 0){
-    //   for (int i = 0 ; i <= nonzero_cnt ; ++i){
-    //     float min_val = ret[i + y * imw];
-    //     int min_idx = i;
-    //     // Find the smallest value in the range.
-    //     for (int j = i+1 ; j <= nonzero_cnt ; ++j){
-    //       float val_j = ret[j + y * imw];
-    //       if (val_j < min_val){
-    //         min_idx = j;
-    //         min_val = val_j;
-    //       }
-    //     }
-    //     // Swap the values.
-    //     if (i != min_idx){
-    //       ret[min_idx] = ret[i + y * imw];
-    //       ret[i + y * imw] = min_val;
-    //     }
-    //   }
-    // }
-
     __shared__ int min_idx;
     __shared__ float min_val;
     while(i_iter < nonzero_cnt){
@@ -178,10 +147,8 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
       __syncthreads();
 
       if(threadIdx.x == 0){
-        if(min_idx != idx){
-          ret[min_idx] = ret[idx];
-          ret[idx] = min_val;
-        }
+        ret[min_idx] = ret[idx];
+        ret[idx] = min_val;
         ++i_iter;
       }
       __syncthreads();
@@ -238,10 +205,8 @@ void calc_sorted_invisib_map(const float* __restrict__ depth, const float* __res
       __syncthreads();
 
       if(threadIdx.x == 0){
-        if(min_idx != idx){
-          ret[min_idx] = ret[idx];
-          ret[idx] = min_val;
-        }
+        ret[min_idx] = ret[idx];
+        ret[idx] = min_val;
         ++i_iter;
       }
       __syncthreads();
@@ -311,7 +276,7 @@ void thre_row_sum(float* ret, float* score_array, int* count_array, float max_th
 }
 
 __global__
-void calc_final(float* score_array, float* out_score, int* perthre){
+void calc_final(float* score_array, int* perthre){
   int y = threadIdx.x;
 
   __shared__ float score;
@@ -425,7 +390,6 @@ void CUDAManager::gpuInit(GLuint bufferID, int ih, int iw){
   cudaMalloc((void**)&mask_d, im_h * im_w * sizeof(float));
 
   // allocate memory
-  cudaMalloc((void**)&score_d, sizeof(float));
   cudaMalloc((void**)&score_arr, im_h * im_w * sizeof(float));
   cudaMalloc((void**)&invisib_progress, im_h * im_w * sizeof(float));
 
@@ -526,17 +490,17 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   cudaGraphicsMapResources( 1, &resource, 0);
   cudaGraphicsSubResourceGetMappedArray(&cuarr, resource, 0, 0);
   cudaBindTextureToArray(texRef, cuarr);
-  // score_d = 0;
+
   // dim3 grid(im_w/16, im_h/16);
   // dim3 block(16, 16);
   // tex_test<<<grid, block>>>(score_arr, im_w, im_h);
 
   calc_sorted_visib_map<<<im_h, im_w, 0, s1>>>(depth_d, mask_d, score_arr,
                                                height_arr, im_w, im_h);
-  // percentile_remove<<<1, im_h, sizeof(int)*im_h, s1>>>(score_arr, height_arr,
-  //                                                      v_pthre, im_w, im_h);
-  // thre_row_sum<<<im_h, im_w, 0, s1>>>(score_arr, sum_arr, height_arr, 0.10, im_w);
-  // calc_final<<<1, im_h, 0, s1>>>(sum_arr, score_d, v_pthre);
+  percentile_remove<<<1, im_h, sizeof(int)*im_h, s1>>>(score_arr, height_arr,
+                                                       v_pthre, im_w, im_h);
+  thre_row_sum<<<im_h, im_w, 0, s1>>>(score_arr, sum_arr, height_arr, 0.10, im_w);
+  calc_final<<<1, im_h, 0, s1>>>(sum_arr, v_pthre);
 
   cudaMemcpyAsync(&host_arr[0], &sum_arr[0], sizeof(float), cudaMemcpyDeviceToHost, s1);
 
@@ -545,7 +509,7 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   percentile_remove<<<1, im_h, sizeof(int)*im_h, s2>>>(invisib_progress,
                                                        invisib_cnt, iv_pthre, im_w, im_h);
   thre_row_sum<<<im_h, im_w, 0, s2>>>(invisib_progress, iv_sum_arr, height_arr, 0.10, im_w);
-  calc_final<<<1, im_h, 0, s2>>>(iv_sum_arr, score_d, iv_pthre);
+  calc_final<<<1, im_h, 0, s2>>>(iv_sum_arr, iv_pthre);
   cudaMemcpyAsync(&host_arr[1], &iv_sum_arr[0], sizeof(float), cudaMemcpyDeviceToHost, s2);
 
   // calc obj score
@@ -554,15 +518,10 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   accumulate_obj_score<<<1, im_h, 0, s3>>>(mask_cnts, nonzero_cnts, obj_score);
   cudaMemcpyAsync(&obj_score_h, obj_score, sizeof(float), cudaMemcpyDeviceToHost, s3);
 
+
+  /* for debug */
   // cudaMemcpy(host_arr, score_arr, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
   // cudaMemcpy(host_arr, invisib_progress, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < im_h; i++){
-  // for(int i = 0; i < 3; i++){
-  //   for(int j = 0; j < im_w; j++){
-  //     printf("%f, ", host_arr[i * im_w + j]);
-  //   }
-  //   printf("\n");
-  // }
   // for(int i = 0; i < im_h; i++){
   //   for(int j = 0; j < im_w; j++){
   //     if(host_arr[i * im_w + j] != 0){
@@ -572,22 +531,15 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   //   }
   //   printf("\n");
   // }
-
-  // int* tmp;
-  // tmp = new int[im_h];
-  // cudaMemcpy(tmp, height_arr, sizeof(int) * im_h, cudaMemcpyDeviceToHost);
   // for(int i = 0; i < im_h; i++){
-  //   printf("%d\n", tmp[i]);
+  //   for(int j = 1; j < im_w; j++){
+  //     if(host_arr[i * im_w + j]  > host_arr[i * im_w + j + 1]
+  //        && host_arr[i * im_w + j + 1] != 0){
+  //       printf("error!");
+  //     }
+  //   }
   // }
-  // delete[] tmp;
-
-  // float* tmp2;
-  // tmp2 = new float[im_h];
-  // cudaMemcpy(tmp2, sum_arr, sizeof(float) * im_h, cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < im_h; i++){
-  //   printf("%f\n", tmp2[i]);
-  // }
-  // delete[] tmp2;
+  // printf("\n");
 
   cudaUnbindTexture(texRef);
   cudaGraphicsUnmapResources(1, &resource, 0);
@@ -596,7 +548,6 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   cudaStreamSynchronize(s2);
   cudaStreamSynchronize(s3);
 
-  // *score = host_arr[0] * obj_score_h;
   *score = host_arr[0] + host_arr[1] + 0.001 * obj_score_h;
   // printf("visib_score : %f, invisib_score : %f, obj_score : %f\n", host_arr[0], host_arr[1], obj_score_h);
   // printf("obj_score : %f\n", obj_score_h);
@@ -620,7 +571,6 @@ CUDAManager::~CUDAManager(){
   cudaFree(depth_d);
   cudaFree(mask_d);
   cudaFree(score_arr);
-  cudaFree(score_d);
   cudaFree(obj_score);
   cudaFree(height_arr);
 
