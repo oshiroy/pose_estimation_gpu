@@ -32,7 +32,6 @@ private:
   int im_w;
   int len_score;
 
-  float* score_d; //device
   int* v_pthre;
   int* iv_pthre;
 
