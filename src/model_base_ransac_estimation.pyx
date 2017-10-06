@@ -4,6 +4,8 @@
 #cython: nonecheck=False
 #cython: profile=True
 
+import os
+
 import numpy as np
 cimport numpy as np
 cimport cython
@@ -20,7 +22,8 @@ cimport pose_estimator_wrapper as pew
 cdef class CyPoseEstimator:
     cdef pew.PoseEstimator* _pose_est
     def __cinit__(self, path_list, im_h, im_w):
-        self._pose_est = new pew.PoseEstimator(path_list, im_h, im_w)
+        root_path = os.path.split(__file__)[0]
+        self._pose_est = new pew.PoseEstimator(path_list, im_h, im_w, root_path)
 
     def __dealloc(self):
         del self._pose_est
@@ -58,8 +61,8 @@ cdef class CyPoseEstimator:
                                          <double*>ret_t.data, <double*>ret_R.data)
         return ret_t, ret_R
 
-def calc_rot_c(np.ndarray[DOUBLE_t, ndim=2] Y,
-               np.ndarray[DOUBLE_t, ndim=2] X):
+cdef calc_rot_c(np.ndarray[DOUBLE_t, ndim=2] Y,
+                np.ndarray[DOUBLE_t, ndim=2] X):
     cdef np.ndarray[DOUBLE_t, ndim=2] R = np.empty((3,3),dtype=np.float64)
     pose_estimation_cpu.calc_rot_eigen_svd3x3(<double *> Y.data, <double *>  X.data, <double *> R.data)
     return R

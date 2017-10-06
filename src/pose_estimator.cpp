@@ -103,9 +103,14 @@ bool PoseEstimator::initialize_gl(std::vector<std::string> path_list)
   // Accept fragment if it closer to the camera than the former one
   glDepthFunc(GL_LESS);
 
+  printf("Root Path : %s\n", rootpath.c_str());
+
+  std::string vert_path("/shader/simpleShader.vert");
+  std::string frag_path("/shader/simpleShader.frag");
   // Create and compile our GLSL program from the shaders
-  programID = LoadShaders("shader/simpleShader.vert",
-                          "shader/simpleShader.frag");
+  programID = LoadShaders((rootpath + vert_path).c_str(),
+                          (rootpath + frag_path).c_str());
+
   // Get a handle for our "MVP" uniform
   MatrixMVP_ID = glGetUniformLocation(programID, "MVP");
   // Get a handle for our "MVP" uniform
@@ -341,10 +346,13 @@ void PoseEstimator::ransac_estimation(double* x_arr, double* y_arr, int len_arr,
 }
 
 
-PoseEstimator::PoseEstimator(std::vector<std::string> path_list, int im_h, int im_w)
+PoseEstimator::PoseEstimator(std::vector<std::string> path_list, int im_h, int im_w,
+                             std::string root_path)
 {
   _im_h = im_h;
   _im_w = im_w;
+
+  rootpath = root_path;
 
   if (!initialize_gl(path_list)){
     printf("Fail Initialize OpenGL\n");
