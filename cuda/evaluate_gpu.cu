@@ -106,7 +106,8 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
     int offset = x + y * imw;
     float4 sample =  tex2D(texRef, x, imh - y); // for convert coords gl -> cv
 
-    __shared__ int nonzero_cnt, idx, i_iter;
+    __shared__ int nonzero_cnt, idx, i_iter, min_idx;
+    __shared__ float min_val;
 
     if(threadIdx.x == 0){
       nonzero_cnt = 0;
@@ -128,9 +129,7 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
     }
     __syncthreads();
 
-    __shared__ int min_idx;
-    __shared__ float min_val;
-    while(i_iter < nonzero_cnt){
+    for(i_iter = 0; i_iter < nonzero_cnt - 1; i_iter++){
       if(threadIdx.x == 0){
         idx = i_iter + y * imw;
         min_val = ret[idx];
@@ -141,7 +140,7 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
         atomicMin(&min_val, ret[offset]);
       }
       __syncthreads();
-      if(x >= i_iter  && x < nonzero_cnt && min_val == ret[offset]){
+      if(x >= i_iter && x < nonzero_cnt && min_val == ret[offset]){
         atomicMin(&min_idx, offset);
       }
       __syncthreads();
@@ -149,7 +148,6 @@ void calc_sorted_visib_map(const float*  __restrict__ depth, const float* __rest
       if(threadIdx.x == 0){
         ret[min_idx] = ret[idx];
         ret[idx] = min_val;
-        ++i_iter;
       }
       __syncthreads();
     }
@@ -188,7 +186,7 @@ void calc_sorted_invisib_map(const float* __restrict__ depth, const float* __res
     }
     __syncthreads();
 
-    while(i_iter < nonzero_cnt){
+    for(i_iter = 0; i_iter < nonzero_cnt - 1; i_iter++){
       if(threadIdx.x == 0){
         idx = i_iter + y * imw;
         min_val = ret[idx];
@@ -207,7 +205,6 @@ void calc_sorted_invisib_map(const float* __restrict__ depth, const float* __res
       if(threadIdx.x == 0){
         ret[min_idx] = ret[idx];
         ret[idx] = min_val;
-        ++i_iter;
       }
       __syncthreads();
     }
@@ -518,29 +515,6 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   accumulate_obj_score<<<1, im_h, 0, s3>>>(mask_cnts, nonzero_cnts, obj_score);
   cudaMemcpyAsync(&obj_score_h, obj_score, sizeof(float), cudaMemcpyDeviceToHost, s3);
 
-
-  /* for debug */
-  // cudaMemcpy(host_arr, score_arr, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
-  // cudaMemcpy(host_arr, invisib_progress, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < im_h; i++){
-  //   for(int j = 0; j < im_w; j++){
-  //     if(host_arr[i * im_w + j] != 0){
-  //       printf("%f, ", host_arr[i * im_w + j]);
-  //       // printf("(%d, %d)", i ,j);
-  //     }
-  //   }
-  //   printf("\n");
-  // }
-  // for(int i = 0; i < im_h; i++){
-  //   for(int j = 1; j < im_w; j++){
-  //     if(host_arr[i * im_w + j]  > host_arr[i * im_w + j + 1]
-  //        && host_arr[i * im_w + j + 1] != 0){
-  //       printf("error!");
-  //     }
-  //   }
-  // }
-  // printf("\n");
-
   cudaUnbindTexture(texRef);
   cudaGraphicsUnmapResources(1, &resource, 0);
 
@@ -551,6 +525,30 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   *score = host_arr[0] + host_arr[1] + 0.001 * obj_score_h;
   // printf("visib_score : %f, invisib_score : %f, obj_score : %f\n", host_arr[0], host_arr[1], obj_score_h);
   // printf("obj_score : %f\n", obj_score_h);
+
+
+  /* for debug */
+  // cudaMemcpy(host_arr, score_arr, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
+  // cudaMemcpy(host_arr, invisib_progress, sizeof(float) * im_h * im_w, cudaMemcpyDeviceToHost);
+  // for(int i = 0; i < im_h; i++){
+  //   printf("%d  :  ", i);
+  //   for(int j = 0; j < im_w; j++){
+  //     if(host_arr[i * im_w + j] != 0){
+  //       printf("%f, ", host_arr[i * im_w + j]);
+  //       // printf("(%d, %d)", i ,j);
+  //     }
+  //   }
+  //   printf("\n");
+  // }
+  for(int i = 0; i < im_h; i++){
+    for(int j = 1; j < im_w; j++){
+      if(host_arr[i * im_w + j]  > host_arr[i * im_w + j + 1]
+         && host_arr[i * im_w + j + 1] != 0){
+        printf("error!");
+      }
+    }
+  }
+  printf("\n");
 }
 
 
