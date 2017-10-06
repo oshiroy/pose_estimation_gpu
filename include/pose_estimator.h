@@ -61,6 +61,9 @@ private:
   // for CUDA
   CUDAManager* cuda_manager;
 
+  //root path
+  std::string rootpath;
+
 public :
 
   // object id for using mesh vector
@@ -90,6 +93,7 @@ public :
   void ransac_estimation(double* x_arr, double* y_arr, int len_arr,
                          double max_dist_lim, int pthre, double* ret_t, double* ret_r);
 
-  PoseEstimator(std::vector<std::string> path_list, int im_h, int im_w);
+  PoseEstimator(std::vector<std::string> path_list, int im_h, int im_w,
+                std::string root_path);
   ~PoseEstimator();
 };

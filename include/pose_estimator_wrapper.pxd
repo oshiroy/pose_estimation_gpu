@@ -3,7 +3,7 @@ from libcpp.string cimport string
 
 cdef extern from "pose_estimator.h":
     cdef cppclass PoseEstimator:
-        PoseEstimator(vector[string], int, int) except +
+        PoseEstimator(vector[string], int, int, string) except +
         void set_depth_image(double*)
         void set_mask(double*)
         void set_object_id(int)
