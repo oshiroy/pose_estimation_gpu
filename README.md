@@ -29,4 +29,4 @@ pip install -e .
 python sample_pose_estimaiton.py
 ```
 
-<img src="sample_data/sample_output.png" alt="output" title="output">
+<img src="samples/sample_data/sample_output.png" alt="output" title="output">
