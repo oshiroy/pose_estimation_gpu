@@ -540,15 +540,15 @@ void CUDAManager::evaluate_visibility(float* score, int pthre, float max_lim){
   //   }
   //   printf("\n");
   // }
-  for(int i = 0; i < im_h; i++){
-    for(int j = 1; j < im_w; j++){
-      if(host_arr[i * im_w + j]  > host_arr[i * im_w + j + 1]
-         && host_arr[i * im_w + j + 1] != 0){
-        printf("error!");
-      }
-    }
-  }
-  printf("\n");
+  // for(int i = 0; i < im_h; i++){
+  //   for(int j = 1; j < im_w; j++){
+  //     if(host_arr[i * im_w + j]  > host_arr[i * im_w + j + 1]
+  //        && host_arr[i * im_w + j + 1] != 0){
+  //       printf("error!");
+  //     }
+  //   }
+  // }
+  // printf("\n");
 }
 
 
