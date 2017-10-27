@@ -90,6 +90,7 @@ public :
   void set_object_id(int id);
   void set_ransac_count(int c);
   void set_k(double* k);
+  void evaluate_score(double* t, double* R, double max_dist_lim, int pthre, double* ret_score);
   void ransac_estimation(double* x_arr, double* y_arr, int len_arr,
                          double max_dist_lim, int pthre, double* ret_t, double* ret_r);
 

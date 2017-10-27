@@ -248,6 +248,23 @@ void PoseEstimator::set_k(double* k)
 }
 
 
+void PoseEstimator::evaluate_score(double* t, double* R, double max_dist_lim, int pthre, double *ret_score)
+{
+  float visib_score;
+  MatrixXd eigen_R(3,3);
+  VectorXd eigen_t(3);
+  // double* to eigen
+  for(int i = 0; i < 3; i++){
+    eigen_t(i) = t[i];
+    for(int j = 0;  j < 3; j++){
+      eigen_R(i, j) = R[i * 3 +j];
+    }
+  }
+  render(eigen_t, eigen_R);
+  cuda_manager->evaluate_visibility(&visib_score, pthre, (float) max_dist_lim);
+  *ret_score = visib_score;
+}
+
 void PoseEstimator::ransac_estimation(double* x_arr, double* y_arr, int len_arr,
                                       double max_dist_lim, int pthre,
                                       double* ret_t, double* ret_r)
