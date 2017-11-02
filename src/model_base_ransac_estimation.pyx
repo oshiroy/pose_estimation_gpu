@@ -27,27 +27,7 @@ cimport pose_estimator_wrapper as pew
 cdef class CyPoseEstimator:
     cdef pew.PoseEstimator* _pose_est
     cdef int object_id
-    models_pointcloud = []
-    flann_idx_array = []
-    def __init__(self, path_list, im_h, im_w, model_partial=4):
-        pyflann.set_distance_type('euclidean')
-        for path in path_list:
-            pc = None
-            model = pyassimp.core.load(path)
-            for mesh in model.meshes:
-                vert = mesh.vertices
-                if pc is None:
-                    pc = vert[0::model_partial, :]
-                else:
-                    pc = np.vstack((pc, vert[0::model_partial, :]))
-            search_idx = pyflann.FLANN()
-            search_idx.build_index(pc.astype(np.float32), algorithm='kmeans',
-                                   centers_init='kmeanspp', random_seed=1234)
-            self.flann_idx_array.append(search_idx)
-            self.models_pointcloud.append(pc.transpose(1, 0))
-
-
-    def __cinit__(self, path_list, im_h, im_w, model_partial=4):
+    def __init__(self, path_list, im_h, im_w):
         root_path = os.path.split(__file__)[0]
         self._pose_est = new pew.PoseEstimator(path_list, im_h, im_w, root_path)
 
@@ -72,6 +52,57 @@ cdef class CyPoseEstimator:
     def set_k(self, np.ndarray[DOUBLE_t, ndim=2] k):
         cdef np.ndarray[DOUBLE_t, ndim=1] k_in = np.asanyarray(k.ravel())
         self._pose_est.set_k(<double*> k_in.data)
+
+    def evaluate_score(self,
+                       np.ndarray[DOUBLE_t, ndim=1] t,
+                       np.ndarray[DOUBLE_t, ndim=2] R,
+                       double max_thre=0.1,
+                       int percentile_thre = 90):
+        ## intialize
+        cdef np.ndarray[DOUBLE_t, ndim=1] ret = np.empty(1)
+        cdef np.ndarray[DOUBLE_t, ndim=1] t_tmp = np.asanyarray(t.ravel())
+        cdef np.ndarray[DOUBLE_t, ndim=1] R_tmp = np.asanyarray(R.ravel())
+        self._pose_est.evaluate_score(<double*> t.data, <double*> R.data,
+                                      max_thre, percentile_thre, <double*> ret.data)
+        return ret.data
+
+    def ransac_estimation(self,
+                          np.ndarray[DOUBLE_t, ndim=2] y_arr,
+                          np.ndarray[DOUBLE_t, ndim=2] x_arr,
+                          int n_ransac=100, double max_thre=0.1,
+                          int percentile_thre = 90):
+        ## intialize
+        cdef np.ndarray[DOUBLE_t, ndim=1] ret_t = np.zeros(3)
+        cdef np.ndarray[DOUBLE_t, ndim=2] ret_R = np.diag((1.0, 1.0, 1.0))
+        cdef np.ndarray[DOUBLE_t, ndim=1] x_arr_tmp = np.asanyarray(x_arr.ravel())
+        cdef np.ndarray[DOUBLE_t, ndim=1] y_arr_tmp = np.asanyarray(y_arr.ravel())
+        self._pose_est.ransac_estimation(<double*> x_arr_tmp.data, <double*> y_arr_tmp.data,
+                                         len(x_arr[0]), max_thre, percentile_thre,
+                                         <double*>ret_t.data, <double*>ret_R.data)
+        return ret_t, ret_R
+
+
+
+cdef class CyPoseEstimatorWithRefinement(CyPoseEstimator):
+    models_pointcloud = []
+    flann_idx_array = []
+    def __init__(self, path_list, im_h, im_w, model_partial=4):
+        super.__init__(self, path_list, im_h, im_w)
+        pyflann.set_distance_type('euclidean')
+        for path in path_list:
+            pc = None
+            model = pyassimp.core.load(path)
+            for mesh in model.meshes:
+                vert = mesh.vertices
+                if pc is None:
+                    pc = vert[0::model_partial, :]
+                else:
+                    pc = np.vstack((pc, vert[0::model_partial, :]))
+            search_idx = pyflann.FLANN()
+            search_idx.build_index(pc.astype(np.float32), algorithm='kmeans',
+                                   centers_init='kmeanspp', random_seed=1234)
+            self.flann_idx_array.append(search_idx)
+            self.models_pointcloud.append(pc.transpose(1, 0))
 
     def icp_refinement(self, np.ndarray[DOUBLE_t, ndim=2] src, np.ndarray[DOUBLE_t, ndim=2] dst,
                        dst_search_idx=None, n_iter=50, thre_percent=95):
@@ -113,34 +144,6 @@ cdef class CyPoseEstimator:
                 break
             old_src = new_src
         return _t, _R
-
-    def evaluate_score(self,
-                       np.ndarray[DOUBLE_t, ndim=1] t,
-                       np.ndarray[DOUBLE_t, ndim=2] R,
-                       double max_thre=0.1,
-                       int percentile_thre = 90):
-        ## intialize
-        cdef np.ndarray[DOUBLE_t, ndim=1] ret = np.empty(1)
-        cdef np.ndarray[DOUBLE_t, ndim=1] t_tmp = np.asanyarray(t.ravel())
-        cdef np.ndarray[DOUBLE_t, ndim=1] R_tmp = np.asanyarray(R.ravel())
-        self._pose_est.evaluate_score(<double*> t.data, <double*> R.data,
-                                      max_thre, percentile_thre, <double*> ret.data)
-        return ret.data
-
-    def ransac_estimation(self,
-                          np.ndarray[DOUBLE_t, ndim=2] y_arr,
-                          np.ndarray[DOUBLE_t, ndim=2] x_arr,
-                          int n_ransac=100, double max_thre=0.1,
-                          int percentile_thre = 90):
-        ## intialize
-        cdef np.ndarray[DOUBLE_t, ndim=1] ret_t = np.zeros(3)
-        cdef np.ndarray[DOUBLE_t, ndim=2] ret_R = np.diag((1.0, 1.0, 1.0))
-        cdef np.ndarray[DOUBLE_t, ndim=1] x_arr_tmp = np.asanyarray(x_arr.ravel())
-        cdef np.ndarray[DOUBLE_t, ndim=1] y_arr_tmp = np.asanyarray(y_arr.ravel())
-        self._pose_est.ransac_estimation(<double*> x_arr_tmp.data, <double*> y_arr_tmp.data,
-                                         len(x_arr[0]), max_thre, percentile_thre,
-                                         <double*>ret_t.data, <double*>ret_R.data)
-        return ret_t, ret_R
 
     def ransac_estimation_with_refinement(self,
                                           np.ndarray[DOUBLE_t, ndim=2] y_arr,
@@ -185,6 +188,7 @@ cdef class CyPoseEstimator:
         # ret_R = np.dot(ret_R, icp_R.T)
         # ret_t -= np.dot(ret_R, icp_t)
         return ret_t, ret_R
+
 
 ## caution !! this function is not correct!!
 cdef calc_rot_c(np.ndarray[DOUBLE_t, ndim=2] Y,
