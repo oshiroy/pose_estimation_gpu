@@ -36,7 +36,7 @@ pose_estimator.set_mask(obj_mask)
 pose_estimator.set_object_id(0)
 
 for i in range(100):
-    ret_t, ret_R = pose_estimator.ransac_estimation(pc, y)
+    ret_t, ret_R = pose_estimator.ransac_estimation_with_refinement(pc, y)
     quat = quaternion.from_rotation_matrix(np.dot(ret_R.T, t_rot))
     quat_w = min(1, abs(quat.w))
     diff_t = np.linalg.norm(ret_t - t_cp)
