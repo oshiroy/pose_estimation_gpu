@@ -22,3 +22,7 @@ cdef extern from "pose_estimation_cpu.cpp":
                                      double* depth, double* model, double* K, double* obj_mask,
                                      int len_arr, int len_model, int im_h, int im_w, int n_ransac,
                                      double max_thre, int pthre, double* ret_t, double* ret_r)
+
+    cdef void simple_ransac_estimation_loop(double* x_arr, double* y_arr,
+                                            int len_arr, int n_ransac,
+                                            double* ret_t, double* ret_r)

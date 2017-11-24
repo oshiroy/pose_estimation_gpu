@@ -25,6 +25,72 @@ struct functor_cmp {
     bool operator()(const int& a, const int&b) const { return b > a; }
 };
 
+void simple_ransac_estimation_loop(double* x_arr, double* y_arr, int len_arr,
+                                   int n_ransac, double* ret_t, double* ret_r)
+{
+  std::random_device rnd;
+  std::mt19937 mt(rnd());
+  std::uniform_int_distribution<> rand_sample(0, len_arr);
+
+  int j, k, r_sample;
+
+  MatrixXd x_arr_mat = Map<Matrix<double, Dynamic, Dynamic, RowMajor> >(x_arr, 3, len_arr);
+  MatrixXd y_arr_mat = Map<Matrix<double, Dynamic, Dynamic, RowMajor> >(y_arr, 3, len_arr);
+  MatrixXd x_mat(3,3);
+  MatrixXd y_mat(3,3);
+  VectorXd x_mean(3);
+  VectorXd y_mean(3);
+  MatrixXd x_demean, y_demean;
+
+  MatrixXd R(3,3);
+  MatrixXd best_R(3,3);
+  VectorXd t(3);
+  VectorXd best_t(3);
+  // for svd
+  MatrixXd v, u;
+  // for scoring
+  double score, best_score = 1e15;
+  for(int i = 0; i < n_ransac; i++){
+    // random sampling
+    for (j = 0; j < 3; j++){
+      r_sample = rand_sample(mt);
+      x_mat.col(j) = x_arr_mat.col(r_sample);
+      y_mat.col(j) = y_arr_mat.col(r_sample);
+    }
+    x_mean = x_mat.rowwise().mean();
+    y_mean = y_mat.rowwise().mean();
+    x_demean = x_mat.colwise() - x_mean;
+    y_demean = y_mat.colwise() - y_mean;
+
+    // compute SVD
+    JacobiSVD<MatrixXd> svd(x_demean * y_demean.transpose(), ComputeFullU | ComputeFullV);
+    v = svd.matrixV();
+    u = svd.matrixU();
+    // Compute R = V * U'
+    if (u.determinant() * v.determinant() < 0){
+      for (size_t x = 0; x < 3; ++x)
+        v(x, 2) *= -1;
+    }
+    R = v * u.transpose();
+    t = y_mean - R * x_mean;
+    score = (((R * x_arr_mat).colwise() + t) -
+             y_arr_mat).cwiseAbs().rowwise().mean().sum();
+    if(score < best_score){
+      best_score = score;
+      best_t = t;
+      best_R = R;
+    }
+  }
+  // Eigen -> double*
+  for(j = 0 ; j < 3 ; j++){
+    ret_t[j] = best_t(j);
+    for(k = 0 ; k < 3 ; k++){
+      ret_r[j * 3 + k] = best_R(j, k);
+    }
+  }
+}
+
+
 void ransac_estimation_loop(double* x_arr, double* y_arr, double* depth,
                             double* model, double* K, double* obj_mask,
                             int len_arr, int len_model, int im_h, int im_w, int n_ransac,

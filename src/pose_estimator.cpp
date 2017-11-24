@@ -130,23 +130,6 @@ bool PoseEstimator::initialize_gl(std::vector<std::string> path_list)
                             colorrenderbuffer);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
-  // glGenRenderbuffers(1, &depthrenderbuffer);
-  // glBindRenderbuffer(GL_RENDERBUFFER, depthrenderbuffer);
-  // glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, _im_w, _im_h);
-  // glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
-  //                           depthrenderbuffer);
-  // glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-  // glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, _im_w, _im_h);
-  // glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
-  //                           depthrenderbuffer);
-
-  // glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-  // Set the list of draw buffers.
-  // DrawBuffers[0] = GL_COLOR_ATTACHMENT0;
-  // glDrawBuffers(1, DrawBuffers); // "1" is the size of DrawBuffers
-
   // Always check that our framebuffer is ok
   if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     return false;
@@ -321,12 +304,12 @@ void PoseEstimator::ransac_estimation(double* x_arr, double* y_arr, int len_arr,
     t = y_mean - R * x_mean;
 
     // rendering model depth image
-    render(t, R);
-    cuda_manager->evaluate_visibility(&visib_score, pthre, (float) max_dist_lim);
-    score = visib_score;
+    // render(t, R);
+    // cuda_manager->evaluate_visibility(&visib_score, pthre, (float) max_dist_lim);
+    // score = visib_score;
     /* no use render impl */
-    // score = (((R * x_arr_mat).colwise() + t) -
-    //          y_arr_mat).cwiseAbs().rowwise().mean().sum();
+    score = (((R * x_arr_mat).colwise() + t) -
+             y_arr_mat).cwiseAbs().rowwise().mean().sum();
 
     // printf("score : %f\n", score);
 
@@ -335,8 +318,6 @@ void PoseEstimator::ransac_estimation(double* x_arr, double* y_arr, int len_arr,
       best_t = t;
       best_R = R;
     }
-
-    // cuda_manager->evaluate_visibility(i, pthre, (float) max_dist_lim);
   }
 
   // copy results device -> host

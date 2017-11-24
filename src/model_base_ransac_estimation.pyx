@@ -251,6 +251,19 @@ def model_base_ransac_estimation_cpp(np.ndarray[DOUBLE_t, ndim=2] y_arr,
     return ret_t, ret_R
 
 
+def simple_ransac_estimation_cpp(np.ndarray[DOUBLE_t, ndim=2] y_arr,
+                                 np.ndarray[DOUBLE_t, ndim=2] x_arr,
+                                 int n_ransac=100):
+    ## intialize
+    cdef np.ndarray[DOUBLE_t, ndim=1] ret_t = np.zeros(3)
+    cdef np.ndarray[DOUBLE_t, ndim=2] ret_R = np.diag((1.0, 1.0, 1.0))
+    cdef np.ndarray[DOUBLE_t, ndim=1] x_arr_tmp = np.asanyarray(x_arr.ravel())
+    cdef np.ndarray[DOUBLE_t, ndim=1] y_arr_tmp = np.asanyarray(y_arr.ravel())
+    pose_estimation_cpu.simple_ransac_estimation_loop(<double*> x_arr_tmp.data, <double*> y_arr_tmp.data,
+                                                      len(x_arr[0]), n_ransac,
+                                                      <double*>ret_t.data, <double*>ret_R.data)
+    return ret_t, ret_R
+
 
 ## cython and c++ loop impl
 def model_base_ransac_estimation_cy(np.ndarray[DOUBLE_t, ndim=2] y_arr,
