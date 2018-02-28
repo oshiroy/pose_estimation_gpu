@@ -76,7 +76,7 @@ pose_estimator.set_depth(depth)
 pose_estimator.set_k(k)
 pose_estimator.set_mask(obj_mask)
 pose_estimator.set_object_id(0)
-ret_t2, ret_R2 = pose_estimator.ransac_estimation_with_refinement(pc, y)
+ret_t2, ret_R2 = pose_estimator.ransac_estimation(pc, y)
 t2 = time.time() - t2
 
 
