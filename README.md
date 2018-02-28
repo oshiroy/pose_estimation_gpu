@@ -2,7 +2,7 @@
 
 
 ## What is this?
-To Be Edited...  
+TBE.
 
 
 regacy version(https://github.com/oshiroy/test/tree/master/pose_estimation_gpu)
@@ -19,9 +19,17 @@ Position
 Rotation matrix
 
 
-
 ## Requirements
-Eigen, cython, cuda, opengl, glfw, glew, etc...
+Eigen, cython, cuda, opengl, glfw3, glew, etc...
+
+
+## installation glfw3
+```python
+sudo add-apt-repository ppa:keithw/glfw3
+sudo apt-get update
+sudo apt-get install libglfw3-dev
+```
+
 
 ## Sample
 ```
